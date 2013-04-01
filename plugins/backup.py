@@ -18,10 +18,10 @@ class Backup(Plugin):
     backup_stage = 0
     autosave_enabled = True
     proto = None
-    
+
     def setup(self):
         self.register(self.backup, Hook, public=True, name='backup', doc='backup the server to a .tar.gz')
-        self.register(self.autosave_changed, ServerOutput, pattern="(?P<username>[A-Za-z0-9_]{1,16}): (?P<action>Enabled|Disabled) level saving\.\.")
+        self.register(self.autosave_changed, ServerOutput, pattern="Turned (?P<action>on|off) world auto-saving")
 
     def server_started(self, event):
         self.autosave_enabled = True
@@ -41,7 +41,7 @@ class Backup(Plugin):
         self.autosave_enabled = state
 
     def autosave_changed(self, event):
-        self.autosave_enabled = (event.match.groupdict()['action'] == 'Enabled')
+        self.autosave_enabled = (event.match.groupdict()['action'] == 'on')
         if self.backup_stage == 1 and not self.autosave_enabled:
             self.backup_stage = 2
             self.delayed_task(self.do_backup, self.flush_wait)
@@ -89,7 +89,6 @@ class Backup(Plugin):
         cmd.append(path)
         cmd.extend(add)
 
-
         def p_ended(path):
             self.console("map backup saved to %s" % path)
             if self.autosave_enabled_prev:
@@ -101,4 +100,3 @@ class Backup(Plugin):
         self.proto.processEnded = lambda reason: p_ended(path)
         self.proto.childDataReceived = lambda fd, d: self.console(d.strip())
         reactor.spawnProcess(self.proto, "/bin/tar", cmd)
-

@@ -26,12 +26,12 @@ class Scrollback:
 class UserServerProtocol(LineReceiver):
     MAX_LENGTH = 999999
     delimiter = '\n'
-    
+
     tab_last = None
     tab_index = 0
-    
+
     attached_user = None
-    
+
     def connectionMade(self):
         self._handlers = []
         for callback, ty in (
@@ -39,7 +39,7 @@ class UserServerProtocol(LineReceiver):
             (self.handle_attach,  events.UserAttach),
             (self.handle_detach,  events.UserDetach)):
             self._handlers.append(self.register(callback, ty))
-    
+
     def connectionLost(self, reason):
         if self.attached_user:
             self.dispatch(events.UserDetach(user=self.attached_user))
@@ -47,18 +47,18 @@ class UserServerProtocol(LineReceiver):
         for i in self._handlers:
             self.unregister(i)
         self._handlers = []
-    
+
     def lineReceived(self, line):
         msg = json.loads(str(line))
         ty = msg["type"]
-        
+
         if ty == "attach":
             self.attached_user = msg['user']
             self.dispatch(events.UserAttach(user=msg['user']))
 
         elif ty == "input":
             self.dispatch(events.UserInput(user=msg['user'], line=msg['line']))
-        
+
         elif ty == "get_scrollback":
             self.send_helper("scrollback", lines=[e.serialize() for e in self.factory.scrollback.get()])
 
@@ -71,42 +71,42 @@ class UserServerProtocol(LineReceiver):
 
         elif ty == "get_players":
             self.send_helper("players", players=self.factory.players)
-        
+
         else:
             self.factory.parent.console("unknown packet: %s" % str(msg))
-        
+
     def send_helper(self, ty, **k):
         k["type"] = ty
         self.sendLine(json.dumps(k))
-    
+
     def console_helper(self, event):
         self.send_helper("console", **event.serialize())
-    
+
     def handle_attach(self, event):
         self.send_helper("user_status", user=event.user, online=True)
-    
+
     def handle_detach(self, event):
         self.send_helper("user_status", user=event.user, online=False)
 
 
 class UserServerFactory(Factory):
     players = []
-    
+
     def __init__(self, parent):
         self.parent     = parent
         self.scrollback = Scrollback(200)
         self.users      = set()
-        
+
         self.parent.events.register(self.handle_console, events.Console)
         self.parent.events.register(self.handle_attach,  events.UserAttach)
         self.parent.events.register(self.handle_detach,  events.UserDetach)
-        
+
         self.parent.events.register(self.handle_player_count, events.StatPlayerCount)
         self.parent.events.register(self.handle_players,      events.StatPlayers)
         self.parent.events.register(self.handle_process,      events.StatProcess)
-        
+
         self.stats = {k: '___' for k in ('memory', 'cpu', 'players_current', 'players_max')}
-    
+
     def buildProtocol(self, addr):
         p = UserServerProtocol()
         p.register   = self.parent.events.register
@@ -117,21 +117,21 @@ class UserServerFactory(Factory):
 
     def handle_console(self, event):
         self.scrollback.put(event)
-    
+
     def handle_attach(self, event):
         self.users.add(event.user)
-    
+
     def handle_detach(self, event):
         self.users.discard(event.user)
-    
+
     #stat handlers
     def handle_player_count(self, event):
         self.stats['players_current'] = event.players_current
         self.stats['players_max']     = event.players_max
-        
+
     def handle_players(self, event):
-        self.players = sorted(event.players, key=str.lower)
-    
+        self.players = sorted(event.players, key=lambda x: x.lower())
+
     def handle_process(self, event):
         for n in ('cpu', 'memory'):
             self.stats[n] = '{0:.2f}'.format(event[n])
